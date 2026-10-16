@@ -4,7 +4,7 @@ import pytest
 
 from cifr import tls
 from cifr.kex import KeyExchange, analyse, ec_to_rsa_bits
-from cifr.scanner import TargetError, candidate_suites, parse_target
+from cifr.scanner import TargetError, candidate_suites, parse_sni, parse_target
 from cifr.scoring import letter_grade, score_cipher, worst_grade
 from cifr.suites import by_name, registry
 from cifr.tlsref import Level, compliance, rank
@@ -181,6 +181,19 @@ def test_parse_server_hello_tls13_and_hrr():
     assert (sh12.version, sh12.cipher, sh12.hello_retry) == (tls.TLS12, 0xC02F, False)
 
 
+def test_parse_certificates():
+    entries = b"\x00\x00\x02ab" + b"\x00\x00\x01c"
+    assert tls.parse_certificates(len(entries).to_bytes(3) + entries) == [b"ab", b"c"]
+    # Truncated final entry is dropped rather than returned short.
+    assert tls.parse_certificates(b"\x00\x00\x09" + b"\x00\x00\x02ab" + b"\x00\x00\x05c") == [b"ab"]
+
+
+def test_parse_certificates_ignores_inflated_length():
+    # A 16 MB declared length with no entries used to loop ~5.6 million times.
+    assert tls.parse_certificates(b"\xff\xff\xff") == []
+    assert tls.parse_certificates(b"\xff\xff\xff" + b"\x00" * 3000) == []
+
+
 def test_analyse_server_key_exchange():
     hello = tls.ServerHello(tls.TLS12, 0, 0)
     ecdhe = b"\x03" + struct.pack("!H", 23) + b"\x41" + b"\x04" * 65
@@ -220,3 +233,18 @@ def test_parse_target(raw, port, expected):
 def test_parse_target_rejects_invalid(raw):
     with pytest.raises(TargetError):
         parse_target(raw)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(None, None), ("", ""), ("example.com", "example.com"), ("example.com.", "example.com"),
+     ("192.0.2.1", "192.0.2.1"), ("bücher.example", "bücher.example")],
+)  # fmt: skip
+def test_parse_sni(raw, expected):
+    assert parse_sni(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["a" * 64 + ".example", "a..b", "bad_host!", "evil\x1b[31m.example"])
+def test_parse_sni_rejects_invalid(raw):
+    with pytest.raises(TargetError):
+        parse_sni(raw)

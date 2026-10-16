@@ -117,6 +117,19 @@ def parse_target(raw: str, port: int | None = None) -> tuple[str, int]:
     return host.rstrip("."), resolved_port
 
 
+def parse_sni(raw: str | None) -> str | None:
+    """Check an explicit --sni value. None means the default; an empty string sends no SNI."""
+    if not raw or tls.is_ip(raw):
+        return raw
+    try:
+        name = raw.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise TargetError(f"invalid SNI name: {raw!r}") from exc
+    if not _HOSTNAME.match(name):
+        raise TargetError(f"invalid SNI name: {raw!r}")
+    return raw.rstrip(".")
+
+
 def resolve(host: str, port: int, sni: str | None, timeout: float) -> Target:
     try:
         info = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)

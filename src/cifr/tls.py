@@ -205,10 +205,14 @@ def parse_server_hello(data: bytes) -> ServerHello:
 
 
 def parse_certificates(data: bytes) -> list[bytes]:
-    total = int.from_bytes(data[0:3])
+    # Bound the walk by the bytes actually received: a server can declare a list
+    # length of up to 16 MB, and zero-length entries would otherwise loop millions of times.
+    end = min(3 + int.from_bytes(data[0:3]), len(data))
     pos, certs = 3, []
-    while pos + 3 <= 3 + total:
+    while pos + 3 <= end:
         length = int.from_bytes(data[pos : pos + 3])
+        if length == 0 or pos + 3 + length > end:
+            break
         certs.append(data[pos + 3 : pos + 3 + length])
         pos += 3 + length
     return certs

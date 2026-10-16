@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 
 from cifr import report
-from cifr.scanner import TargetError, parse_target, resolve, scan
+from cifr.scanner import TargetError, parse_sni, parse_target, resolve, scan
 
 
 class Profile(StrEnum):
@@ -57,6 +57,7 @@ def enum_ciphers(
     console = Console(stderr=as_json)
     try:
         host, resolved_port = parse_target(target, port)
+        sni = parse_sni(sni)
         with console.status(f"Connecting to {host}:{resolved_port}…"):
             tgt = resolve(host, resolved_port, sni, timeout)
         with console.status(f"Enumerating cipher suites on {tgt.ip}:{tgt.port}…") as status:
